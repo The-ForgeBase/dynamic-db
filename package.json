@@ -1,0 +1,22 @@
+{
+  "name": "dynamic-db",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts"
+  },
+  "dependencies": {
+    "@hono/node-server": "^1.13.7",
+    "better-sqlite3": "^11.7.2",
+    "hono": "^4.6.16",
+    "knex": "^3.1.0",
+    "knex-schema-inspector": "3.0.0",
+    "kysely": "^0.27.5",
+    "kysely-codegen": "^0.17.0",
+    "sqlite3": "^5.1.7"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.12",
+    "@types/node": "^20.11.17",
+    "tsx": "^4.7.1"
+  }
+}
