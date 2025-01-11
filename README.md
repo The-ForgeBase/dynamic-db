@@ -20,10 +20,29 @@
   - Foreign key relationship information
 
 - **Event Hooks System**
+
   - Before/After query hooks
   - Before/After mutation hooks (create/update/delete)
   - Real-time operation logging
   - Extensible event system
+
+- **Row-Level Security (RLS)**
+
+  - Fine-grained access control at row level
+  - Multiple permission rule types:
+    - Public/Auth/Guest access
+    - Label-based permissions
+    - Team-based permissions
+    - Field-value checks
+    - Custom SQL conditions
+  - Permission persistence in database
+  - Real-time permission evaluation
+
+- **Permission Management**
+  - CRUD operations for table permissions
+  - Operation-specific rules (SELECT/INSERT/UPDATE/DELETE)
+  - Flexible permission rule configuration
+  - Database-backed permission storage
 
 ## Quick Start
 
@@ -73,6 +92,63 @@ POST /data/users
 }
 ```
 
+### Permission Management
+
+#### Get Table Permissions
+
+```http
+GET /permissions/users
+```
+
+#### Set Table Permissions
+
+```http
+POST /permissions/users
+{
+  "operations": {
+    "SELECT": [
+      { "allow": "public" }
+    ],
+    "INSERT": [
+      { "allow": "auth" }
+    ],
+    "UPDATE": [
+      { "allow": "labels", "labels": ["admin"] }
+    ],
+    "DELETE": [
+      { "allow": "teams", "teams": ["moderators"] }
+    ]
+  }
+}
+```
+
+#### Field-Based Permission Example
+
+```http
+POST /permissions/posts
+{
+  "operations": {
+    "SELECT": [
+      {
+        "allow": "fieldCheck",
+        "fieldCheck": {
+          "field": "authorId",
+          "operator": "===",
+          "valueType": "userContext",
+          "value": "userId"
+        }
+      }
+    ]
+  }
+}
+```
+
+#### Delete Table Permissions
+
+```http
+DELETE /permissions/users
+```
+
 ## Technology Stack
 
 - Hono (Web Framework)
@@ -85,7 +161,8 @@ POST /data/users
 - This is an experimental project
 - Limited data type support
 - Basic validation only
-- No authentication/authorization
+- Simple permission caching
+- No authentication system (implement your own)
 - No production-ready security features
 
 ## References
@@ -95,3 +172,4 @@ POST /data/users
 - [Hono Documentation](https://hono.dev/)
 <!-- - [https://github.com/arthurkushman/buildsqlx?utm_campaign=awesomego&utm_medium=referral&utm_source=awesomego](For Golang)
 - [https://awesome-go.com/sql-query-builders/](For Golang) -->
+<!-- explore save-eval for more complex case -->
