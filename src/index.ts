@@ -28,6 +28,7 @@ hookableDB.on("beforeQuery", ({ tableName, context }) => {
 
 const app = new Hono();
 
+// check  "/records/:tableName" to see how the rls and permissions are enforced
 const user: UserContext = {
   userId: 1,
   labels: ["user"],
