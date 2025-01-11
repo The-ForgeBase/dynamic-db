@@ -3,6 +3,9 @@ import { Hono } from "hono";
 import knex from "knex";
 import KnexHooks from "./hookableDb.js";
 import { DBInspector } from "./inspector.js";
+import { PermissionService } from "./permissionService.js";
+import type { TablePermissions, UserContext } from "./types.js";
+import { enforcePermissions } from "./rlsManager.js";
 
 // Initialize Knex with SQLite for simplicity
 const knexInstance = knex({
@@ -13,6 +16,8 @@ const knexInstance = knex({
   useNullAsDefault: true, // Required for SQLite
 });
 
+export const permissionService = new PermissionService(knexInstance);
+
 const hookableDB = new KnexHooks(knexInstance);
 
 // Real-time listener
@@ -22,6 +27,12 @@ hookableDB.on("beforeQuery", ({ tableName, context }) => {
 });
 
 const app = new Hono();
+
+const user: UserContext = {
+  userId: 1,
+  labels: ["user"],
+  teams: ["engineering"],
+};
 
 // Utility: Error handling for async routes
 const asyncHandler = (fn: any) => async (c: any) => {
@@ -132,7 +143,14 @@ app.get(
       { filter, limit, offset }
     );
 
-    return c.json({ records });
+    const filteredRows = await enforcePermissions(
+      tableName,
+      "SELECT",
+      records,
+      user
+    );
+
+    return c.json({ records: filteredRows });
   })
 );
 
@@ -236,6 +254,47 @@ app.put(
     }
 
     return c.json({ message: "Record updated" });
+  })
+);
+
+// Permission Management Routes
+app.get(
+  "/permissions/:tableName",
+  asyncHandler(async (c: any) => {
+    const tableName = c.req.param("tableName");
+    const permissions = await permissionService.getPermissionsForTable(
+      tableName
+    );
+
+    if (!permissions) {
+      return c.json({ error: "No permissions found for table" }, 404);
+    }
+
+    return c.json(permissions);
+  })
+);
+
+app.post(
+  "/permissions/:tableName",
+  asyncHandler(async (c: any) => {
+    const tableName = c.req.param("tableName");
+    const permissions = (await c.req.json()) as TablePermissions;
+
+    if (!permissions?.operations) {
+      return c.json({ error: "Invalid permissions format" }, 400);
+    }
+
+    await permissionService.setPermissionsForTable(tableName, permissions);
+    return c.json({ message: "Permissions updated successfully" });
+  })
+);
+
+app.delete(
+  "/permissions/:tableName",
+  asyncHandler(async (c: any) => {
+    const tableName = c.req.param("tableName");
+    await permissionService.deletePermissionsForTable(tableName);
+    return c.json({ message: "Permissions deleted successfully" });
   })
 );
 
