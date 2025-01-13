@@ -164,6 +164,7 @@ export interface QueryParams {
   explain?: ExplainOptions;
   recursiveCtes?: RecursiveCTE[];
   advancedWindows?: WindowFunctionAdvanced[];
+  select?: string[];
 }
 
 export interface QueryOptions {
@@ -709,16 +710,16 @@ class QueryBuilder<T extends Record<string, any>> {
    */
   //TODO: Add support for bindings to avoid SQL injection
   //TODO: Add support for subqueries
-  whereExists(rawSql: string, bindings?: any[]): this {
-    if (!this.params.whereExists) {
-      this.params.whereExists = [];
-    }
-    this.params.whereExists.push({
-      sql: rawSql,
-      bindings,
-    });
-    return this;
-  }
+  // whereExists(rawSql: string, bindings?: any[]): this {
+  //   if (!this.params.whereExists) {
+  //     this.params.whereExists = [];
+  //   }
+  //   this.params.whereExists.push({
+  //     sql: rawSql,
+  //     bindings,
+  //   });
+  //   return this;
+  // }
 
   /**
    * Add a raw expression
@@ -881,6 +882,22 @@ class QueryBuilder<T extends Record<string, any>> {
   private pivotResults(records: T[], pivot: TransformConfig["pivot"]): any[] {
     // Implementation of pivot logic
     return records;
+  }
+
+  /**
+   * Select specific fields from the table
+   * @param fields Fields to select
+   * @example
+   * db.table("users")
+   *   .select("id", "name", "email")
+   *   .execute();
+   */
+  select(...fields: string[]): this {
+    if (!this.params.select) {
+      this.params.select = [];
+    }
+    this.params.select.push(...fields);
+    return this;
   }
 }
 

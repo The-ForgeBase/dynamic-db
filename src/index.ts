@@ -6,6 +6,7 @@ import { DBInspector } from "./inspector.js";
 import { PermissionService } from "./permissionService.js";
 import type { TablePermissions, UserContext } from "./types.js";
 import { enforcePermissions } from "./rlsManager.js";
+import { QueryHandler } from "./sdk/server.js";
 
 // Initialize Knex with SQLite for simplicity
 const knexInstance = knex({
@@ -93,6 +94,20 @@ app.post(
             column = table.boolean(col.name);
           } else if (col.type === "decimal") {
             column = table.decimal(col.name);
+          } else if (col.type === "text") {
+            column = table.text(col.name);
+          } else if (col.type === "timestamp") {
+            column = table.timestamp(col.name);
+          } else if (col.type === "json") {
+            column = table.json(col.name);
+          } else if (col.type === "jsonb") {
+            column = table.jsonb(col.name);
+          } else if (col.type === "uuid") {
+            column = table.uuid(col.name);
+          } else if (col.type === "enum") {
+            column = table.enum(col.name, col.values);
+          } else if (col.type === "specificType") {
+            column = table.specificType(col.name, col.type);
           }
 
           // Apply modifiers
@@ -117,12 +132,7 @@ app.get(
   "/records/:tableName",
   asyncHandler(async (c: any) => {
     const tableName = c.req.param("tableName");
-    console.log(c.req.query("filter"));
-    const filter = c.req.query("filter")
-      ? JSON.parse(c.req.query("filter"))
-      : {};
-    const limit = parseInt(c.req.query("limit"), 10) || 10;
-    const offset = parseInt(c.req.query("offset"), 10) || 0;
+    const params = c.req.query();
 
     // Validate table name
     const validTables = ["users", "products", "orders"];
@@ -130,37 +140,69 @@ app.get(
       return c.json({ error: "Invalid table name" }, 400);
     }
 
-    // Validate query parameters
-    if (typeof filter !== "object" || isNaN(limit) || isNaN(offset)) {
-      return c.json({ error: "Invalid query parameters" }, 400);
-    }
+    // Parse query parameters
+    let queryParams: Record<string, any> = {};
+
+    Object.entries(params).forEach(([key, value]) => {
+      try {
+        // Try to parse as JSON first
+        if (typeof value === "string") {
+          try {
+            queryParams[key] = JSON.parse(value);
+          } catch {
+            // If not JSON, handle as regular value
+            if (key === "limit" || key === "offset") {
+              queryParams[key] = parseInt(value, 10) || 10;
+            } else {
+              queryParams[key] = value;
+            }
+          }
+        } else {
+          queryParams[key] = value;
+        }
+      } catch (error) {
+        console.warn(`Failed to parse parameter ${key}:`, error);
+      }
+    });
+
+    console.log("Original Params:", params);
+    console.log("Parsed Query Params:", queryParams);
+
+    const handler = new QueryHandler(hookableDB.getKnexInstance());
 
     // Query the database safely
     const records = await hookableDB.query(
       tableName,
       (query) => {
-        return query.where(filter).limit(limit).offset(offset);
+        return handler.buildQuery(queryParams, query);
       },
-      { filter, limit, offset }
+      queryParams
     );
 
-    const filteredRows = await enforcePermissions(
-      tableName,
-      "SELECT",
-      records,
-      user
-    );
+    // const filteredRows = await enforcePermissions(
+    //   tableName,
+    //   "SELECT",
+    //   records,
+    //   user
+    // );
 
-    return c.json({ records: filteredRows });
+    return c.json({ records: records });
   })
 );
 
 /**
  * POST /data/:tableName
- * Creates a new record in the specified table.
- * Request Body Example:
+ * Creates one or more records in the specified table.
+ * Request Body Example for single record:
  * {
  *   "data": { "name": "John", "email": "john@example.com" }
+ * }
+ * Request Body Example for multiple records:
+ * {
+ *   "data": [
+ *     { "name": "John", "email": "john@example.com" },
+ *     { "name": "Jane", "email": "jane@example.com" }
+ *   ]
  * }
  */
 app.post(
@@ -175,17 +217,33 @@ app.post(
       return c.json({ error: "Invalid table name" }, 400);
     }
 
-    if (typeof data !== "object" || Object.keys(data).length === 0) {
-      return c.json({ error: "Invalid data" }, 400);
+    // Handle both single record and array of records
+    const isArray = Array.isArray(data);
+    const records = isArray ? data : [data];
+
+    // Validate records
+    if (
+      !records.length ||
+      !records.every(
+        (record) => typeof record === "object" && Object.keys(record).length > 0
+      )
+    ) {
+      return c.json({ error: "Invalid data format" }, 400);
     }
 
-    const [id] = await hookableDB.mutate(
+    // Insert records
+    const ids = await hookableDB.mutate(
       tableName,
       "create",
-      (query) => query.insert(data),
-      data
+      (query) => query.insert(records).returning("id"),
+      records
     );
-    return c.json({ message: "Record created", id });
+
+    return c.json({
+      message: `${records.length} record(s) created`,
+      ids: ids,
+      count: records.length,
+    });
   })
 );
 

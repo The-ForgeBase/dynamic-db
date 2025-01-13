@@ -50,6 +50,10 @@ class KnexHooks {
     this.events = new EventEmitter();
   }
 
+  getKnexInstance(): Knex {
+    return this.knex;
+  }
+
   // Hookable query method
   async query<T extends {}>(
     tableName: string,
@@ -105,7 +109,7 @@ class KnexHooks {
     context?: HookContext
   ): Promise<void> {
     // Example: Log fetched data
-    console.log(`[Query] Fetched from ${tableName}:`, result);
+    // console.log(`[Query] Fetched from ${tableName}:`, result);
   }
 
   async beforeMutation(

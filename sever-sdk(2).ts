@@ -455,3 +455,114 @@ class QueryHandler {
     }, []);
   }
 }
+
+// Basic Queries
+async function basicQueries() {
+  // Simple select with where clause
+  const activeUsers = await db
+    .table<User>("users")
+    .where("status", "active")
+    .execute();
+
+  // Multiple conditions
+  const seniorManagers = await db
+    .table<User>("users")
+    .where("role", "manager")
+    .where("experience", ">=", 5)
+    .execute();
+
+  // Order by with nulls handling
+  const sortedUsers = await db
+    .table<User>("users")
+    .orderBy("lastName", "asc", "last")
+    .orderBy({ field: "salary", direction: "desc", nulls: "first" })
+    .execute();
+
+  // Pagination
+  const pagedResults = await db
+    .table<User>("users")
+    .offset(20)
+    .limit(10)
+    .execute();
+
+  // Select specific fields
+  const userEmails = await db
+    .table<User>("users")
+    .select("id", "email")
+    .where("status", "active")
+    .execute();
+
+  // Select with window functions
+  const rankedSalaries = await db
+    .table<User>("users")
+    .select("name", "department", "salary")
+    .window("rank", "salary_rank", {
+      partitionBy: ["department"],
+      orderBy: [{ field: "salary", direction: "desc" }],
+    })
+    .execute();
+
+  // Select with aggregates
+  const departmentStats = await db
+    .table<User>("users")
+    .select("department")
+    .groupBy("department")
+    .count("id", "total_employees")
+    .avg("salary", "avg_salary")
+    .execute();
+}
+
+// Transformations
+async function transformations() {
+  // Compute new fields
+  const enrichedUsers = await db
+    .table<User>("users")
+    .compute({
+      fullName: (row) => `${row.firstName} ${row.lastName}`,
+      yearsEmployed: (row) =>
+        new Date().getFullYear() - new Date(row.hireDate).getFullYear(),
+    })
+    .execute();
+
+  // Pivot example
+  const pivotedData = await db
+    .table<Order>("orders")
+    .pivot("status", ["pending", "completed", "cancelled"], {
+      type: "count",
+      field: "id",
+    })
+    .execute();
+}
+
+// Complex Real-World Examples
+async function realWorldExamples() {
+  // Sales analysis with multiple CTEs and window functions
+  const monthlySales = db
+    .table<Order>("orders")
+    .groupBy("year", "month")
+    .sum("total", "monthly_total");
+
+  const departmentSales = db
+    .table<Order>("orders")
+    .groupBy("department")
+    .sum("total", "dept_total");
+
+  const analysis = await db
+    .table<Order>("orders")
+    .with("monthly", monthlySales)
+    .with("dept_sales", departmentSales)
+    .window("rank", "sales_rank", {
+      partitionBy: ["department"],
+      orderBy: [{ field: "total", direction: "desc" }],
+    })
+    .window("sum", "running_total", {
+      field: "total",
+      partitionBy: ["department"],
+      orderBy: [{ field: "date", direction: "asc" }],
+    })
+    .where("status", "completed")
+    .groupBy("department", "category")
+    .having("total_sales", ">", 10000)
+    .orderBy("total_sales", "desc", "last")
+    .execute();
+}

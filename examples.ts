@@ -28,36 +28,166 @@ interface Product {
 }
 
 // Initialize SDK
-const db = new DatabaseSDK("https://api.example.com");
+const db = new DatabaseSDK("http://localhost:3000");
+
+// Helper function to run examples
+async function runExample(name: string, fn: () => Promise<any>) {
+  console.log(`\n=== Running ${name} ===`);
+  try {
+    const result = await fn();
+    console.log(`✅ ${name} completed successfully`);
+    displayResults(name, result);
+  } catch (error) {
+    console.error(`❌ ${name} failed:`, error);
+  }
+}
+
+// Function to display results
+function displayResults(name: string, data: any) {
+  console.log(`\n📋 Results for ${name}:`);
+  console.log(JSON.stringify(data, null, 2));
+}
+
+// Main function to run examples
+async function main() {
+  // await runExample("Basic Queries", basicQueries);
+  // await runExample("Advanced Filtering", advancedFiltering);
+  // await runExample("Aggregations and Grouping", aggregationsAndGrouping);
+  // await runExample("Window Functions", windowFunctions);
+  await runExample("CTEs", cteExamples);
+  // await runExample("Transformations", transformations);
+  // await runExample("Complex Real-World Examples", realWorldExamples);
+}
 
 // Basic Queries
 async function basicQueries() {
-  // Simple select with where clause
-  const activeUsers = await db
-    .table<User>("users")
-    .where("status", "active")
+  const results = {
+    activeUsers: await db
+      .table<User>("users")
+      .where("status", "active")
+      .execute(),
+
+    seniorManagers: await db
+      .table<User>("users")
+      .where("role", "manager")
+      .where("experience", ">=", 5)
+      .execute(),
+
+    sortedUsers: await db
+      .table<User>("users")
+      .orderBy("lastName", "asc")
+      .orderBy({ field: "salary", direction: "desc", nulls: "first" })
+      .execute(),
+
+    pagedResults: await db.table<User>("users").offset(20).limit(10).execute(),
+
+    userEmails: await db
+      .table<User>("users")
+      .select("id", "email")
+      .where("status", "active")
+      .execute(),
+
+    rankedSalaries: await db
+      .table<User>("users")
+      .select("firstName", "department", "salary")
+      .window("rank", "salary_rank", {
+        partitionBy: ["department"],
+        orderBy: [{ field: "salary", direction: "desc" }],
+      })
+      .execute(),
+
+    departmentStats: await db
+      .table<User>("users")
+      .select("department")
+      .groupBy("department")
+      .count("id", "total_employees")
+      .avg("salary", "avg_salary")
+      .execute(),
+  };
+
+  return results;
+}
+
+// Aggregations and Grouping
+async function aggregationsAndGrouping() {
+  // Basic aggregation
+  const orderStats = await db
+    .table<Order>("orders")
+    .groupBy("status")
+    .count("id", "order_count")
+    .sum("total", "total_amount")
+    .avg("total", "average_amount")
     .execute();
 
-  // Multiple conditions
-  const seniorManagers = await db
-    .table<User>("users")
-    .where("role", "manager")
-    .where("experience", ">=", 5)
+  // Having clause
+  const highValueOrderGroups = await db
+    .table<Order>("orders")
+    .groupBy("userId")
+    .having("total_amount", ">", 1000)
+    .sum("total", "total_amount")
     .execute();
 
-  // Order by with nulls handling
-  const sortedUsers = await db
-    .table<User>("users")
-    .orderBy("lastName", "asc", "last")
-    .orderBy({ field: "salary", direction: "desc", nulls: "first" })
+  // Multiple aggregations with complex grouping
+  const detailedStats = await db
+    .table<Order>("orders")
+    .groupBy("department", "status")
+    .count("id", "order_count")
+    .sum("total", "revenue")
+    .avg("total", "avg_order_value")
+    .min("total", "min_order")
+    .max("total", "max_order")
+    .having("order_count", ">", 1)
+    .orderBy("revenue", "desc")
     .execute();
 
-  // Pagination
-  const pagedResults = await db
+  return { orderStats, highValueOrderGroups, detailedStats };
+}
+
+// Window Functions
+async function windowFunctions() {
+  // Row number
+  const rankedUsers = await db
     .table<User>("users")
-    .offset(20)
-    .limit(10)
+    .select("firstName", "department", "salary")
+    .rowNumber("rank", ["department"], [{ field: "salary", direction: "desc" }])
     .execute();
+
+  // Multiple window functions
+  const analyzedSalaries = await db
+    .table<User>("users")
+    .select("firstName", "department", "salary")
+    .window("rank", "salary_rank", {
+      partitionBy: ["department"],
+      orderBy: [{ field: "salary", direction: "desc" }],
+    })
+    .window("lag", "prev_salary", {
+      field: "salary",
+      partitionBy: ["department"],
+      orderBy: [{ field: "hireDate", direction: "asc" }],
+    })
+    .execute();
+
+  // Advanced window function
+  const advancedAnalysis = await db
+    .table<User>("users")
+    .select("id", "firstName", "lastName", "department", "salary", "hireDate")
+    .windowAdvanced("sum", "running_total", {
+      field: "salary",
+      over: {
+        partitionBy: ["department"],
+        orderBy: [{ field: "hireDate", direction: "asc" }],
+        frame: {
+          type: "ROWS",
+          start: "UNBOUNDED PRECEDING",
+          end: "CURRENT ROW",
+        },
+      },
+    })
+    .orderBy("department", "asc")
+    .orderBy("hireDate", "asc")
+    .execute();
+
+  return { advancedAnalysis, rankedUsers, analyzedSalaries };
 }
 
 // Advanced Filtering
@@ -86,89 +216,20 @@ async function advancedFiltering() {
     .execute();
 
   // Where exists
-  const usersWithOrders = await db
-    .table<User>("users")
-    .whereExists(
-      "SELECT 1 FROM orders WHERE orders.user_id = users.id AND total > ?",
-      [1000]
-    )
-    .execute();
-}
+  // TODO: needs fixing in the sdk to prevent SQL injection
+  // const usersWithOrders = await db
+  //   .table<User>("users")
+  //   .whereExists(
+  //     "SELECT 1 FROM orders WHERE orders.user_id = users.id AND total > ?",
+  //     [1000]
+  //   )
+  //   .execute();
 
-// Aggregations and Grouping
-async function aggregationsAndGrouping() {
-  // Basic aggregation
-  const orderStats = await db
-    .table<Order>("orders")
-    .groupBy("status")
-    .count("id", "order_count")
-    .sum("total", "total_amount")
-    .avg("total", "average_amount")
-    .execute();
-
-  // Having clause
-  const highValueOrderGroups = await db
-    .table<Order>("orders")
-    .groupBy("userId")
-    .having("total_amount", ">", 10000)
-    .sum("total", "total_amount")
-    .execute();
-
-  // Multiple aggregations with complex grouping
-  const detailedStats = await db
-    .table<Order>("orders")
-    .groupBy("department", "status")
-    .count("id", "order_count")
-    .sum("total", "revenue")
-    .avg("total", "avg_order_value")
-    .min("total", "min_order")
-    .max("total", "max_order")
-    .having("order_count", ">", 5)
-    .orderBy("revenue", "desc")
-    .execute();
-}
-
-// Window Functions
-async function windowFunctions() {
-  // Row number
-  const rankedUsers = await db
-    .table<User>("users")
-    .rowNumber("rank", ["department"], [{ field: "salary", direction: "desc" }])
-    .execute();
-
-  // Multiple window functions
-  const analyzedSalaries = await db
-    .table<User>("users")
-    .window("rank", "salary_rank", {
-      partitionBy: ["department"],
-      orderBy: [{ field: "salary", direction: "desc" }],
-    })
-    .window("lag", "prev_salary", {
-      field: "salary",
-      partitionBy: ["department"],
-      orderBy: [{ field: "hireDate", direction: "asc" }],
-    })
-    .execute();
-
-  // Advanced window function
-  const advancedAnalysis = await db
-    .table<User>("users")
-    .windowAdvanced("sum", "running_total", {
-      field: "salary",
-      over: {
-        partitionBy: ["department"],
-        orderBy: [{ field: "hireDate", direction: "asc" }],
-        frame: {
-          type: "ROWS",
-          start: "UNBOUNDED PRECEDING",
-          end: "CURRENT ROW",
-        },
-      },
-    })
-    .execute();
+  return { filteredUsers, salaryRange, specificDepts };
 }
 
 // CTEs (Common Table Expressions)
+//TODO: not yet working well on the server side
 async function cteExamples() {
   // Simple CTE
   const highPaidUsers = db.table<User>("users").where("salary", ">", 100000);
@@ -185,7 +246,7 @@ async function cteExamples() {
 
   const recursiveQuery = db
     .table<Product>("products")
-    .where("price", "<", 1000);
+    .where("price", ">", 1000);
 
   const recursiveResult = await db
     .table<Product>("products")
@@ -193,59 +254,37 @@ async function cteExamples() {
       unionAll: true,
     })
     .execute();
+
+  return { result, recursiveResult };
 }
 
-// Transformations
 async function transformations() {
-  // Compute new fields
-  const enrichedUsers = await db
-    .table<User>("users")
-    .compute({
-      fullName: (row) => `${row.firstName} ${row.lastName}`,
-      yearsEmployed: (row) =>
-        new Date().getFullYear() - new Date(row.hireDate).getFullYear(),
-    })
-    .execute();
-
-  // Pivot example
-  const pivotedData = await db
-    .table<Order>("orders")
-    .pivot("status", ["pending", "completed", "cancelled"], {
-      type: "count",
-      field: "id",
-    })
-    .execute();
+  // Implement transformations example
+  return [];
 }
 
-// Complex Real-World Examples
 async function realWorldExamples() {
-  // Sales analysis with multiple CTEs and window functions
-  const monthlySales = db
-    .table<Order>("orders")
-    .groupBy("year", "month")
-    .sum("total", "monthly_total");
-
-  const departmentSales = db
-    .table<Order>("orders")
-    .groupBy("department")
-    .sum("total", "dept_total");
-
-  const analysis = await db
-    .table<Order>("orders")
-    .with("monthly", monthlySales)
-    .with("dept_sales", departmentSales)
-    .window("rank", "sales_rank", {
-      partitionBy: ["department"],
-      orderBy: [{ field: "total", direction: "desc" }],
-    })
-    .window("sum", "running_total", {
-      field: "total",
-      partitionBy: ["department"],
-      orderBy: [{ field: "date", direction: "asc" }],
-    })
-    .where("status", "completed")
-    .groupBy("department", "category")
-    .having("total_sales", ">", 10000)
-    .orderBy("total_sales", "desc", "last")
-    .execute();
+  // Implement complex real-world example
+  return [];
 }
+
+// Update the module execution check for ES modules
+const isMainModule = import.meta.url === `file://${process.argv[1]}`;
+
+if (isMainModule) {
+  main().catch((error) => {
+    console.error("Error running examples:", error);
+    process.exit(1);
+  });
+}
+
+// Export the examples for individual running
+export const examples = {
+  basicQueries,
+  advancedFiltering,
+  aggregationsAndGrouping,
+  windowFunctions,
+  cteExamples,
+  transformations,
+  realWorldExamples,
+};

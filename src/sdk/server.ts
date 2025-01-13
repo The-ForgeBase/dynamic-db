@@ -1,4 +1,6 @@
 import type knex from "knex";
+import { getAdapter, DatabaseFeature } from "../adapters/index.js";
+import type { DatabaseAdapter } from "../adapters/index.js";
 
 // types.ts
 export type WhereOperator =
@@ -15,7 +17,7 @@ export type WhereOperator =
   | "is null"
   | "is not null";
 
-interface WhereClause {
+export interface WhereClause {
   field: string;
   operator: WhereOperator;
   value: any;
@@ -29,14 +31,28 @@ interface WhereBetweenClause {
   boolean?: GroupOperator;
 }
 
-interface OrderByClause {
+export interface OrderByClause {
   field: string;
   direction?: "asc" | "desc";
   nulls?: "first" | "last";
 }
 
-interface WindowFunction {
-  type: string;
+export interface WindowFunction {
+  type:
+    | "row_number"
+    | "rank"
+    | "dense_rank"
+    | "lag"
+    | "lead"
+    | "first_value"
+    | "last_value"
+    | "sum"
+    | "avg"
+    | "count"
+    | "min"
+    | "max"
+    | "nth_value"
+    | "ntile";
   field?: string;
   alias: string;
   partitionBy?: string[];
@@ -129,16 +145,25 @@ export interface QueryParams {
   // explain?: ExplainOptions;
   recursiveCtes?: RecursiveCTE[];
   advancedWindows?: WindowFunctionAdvanced[];
+  select?: string[];
 }
 
 // query-builder.ts
-class QueryHandler {
+export class QueryHandler {
+  private adapter: DatabaseAdapter;
+
   constructor(private knex: knex.Knex) {
     this.knex = knex;
+    this.adapter = getAdapter(knex);
   }
 
   buildQuery(params: QueryParams, query: knex.Knex.QueryBuilder) {
     try {
+      // Add select handling at the start of query building
+      if (params.select?.length) {
+        query = query.select(params.select);
+      }
+
       // 1. CTEs and Window Functions (must come first)
       // Handle CTEs first
       if (params.ctes?.length) {
@@ -152,61 +177,47 @@ class QueryHandler {
       // Handle recursive CTEs
       if (params.recursiveCtes?.length) {
         params.recursiveCtes.forEach((cte) => {
-          query = query.withRecursive(
-            cte.name,
-            (qb: knex.Knex.QueryBuilder) => {
-              const initial = this.buildQuery(cte.initialQuery.params, qb);
-              const recursive = this.buildQuery(
-                cte.recursiveQuery.params,
-                this.knex.queryBuilder()
-              );
-              return initial.union(recursive, cte.unionAll);
-            }
-          );
+          query = query.withRecursive(cte.name, (qb) => {
+            return qb.from(() => {
+              const initial = this.knex(cte.initialQuery.tableName)
+                .select("*")
+                .where(cte.initialQuery.params.filter || {});
+
+              const recursive = this.knex(cte.recursiveQuery.tableName)
+                .select("*")
+                .where(cte.recursiveQuery.params.filter || {});
+
+              if (cte.unionAll) {
+                return initial.unionAll(recursive);
+              }
+              return initial.union(recursive);
+            });
+          });
         });
       }
 
       // Apply regular window functions first
-      if (params.windowFunctions) {
+      if (
+        params.windowFunctions &&
+        this.adapter.supportsFeature(DatabaseFeature.WindowFunctions)
+      ) {
         params.windowFunctions.forEach((wf) => {
-          let windowClause = this.knex.raw("??", [wf.field || "*"]);
-
-          if (wf.type !== "row_number") {
-            windowClause = this.knex.raw(`${wf.type}(${windowClause})`);
-          }
-
-          let overClause = "OVER(";
-          if (wf.partitionBy?.length) {
-            overClause += ` PARTITION BY ${wf.partitionBy
-              .map((f) => `??`)
-              .join(",")}`;
-          }
-          if (wf.orderBy?.length) {
-            overClause += ` ORDER BY ${wf.orderBy
-              .map((ob) => `?? ${ob.direction || "asc"}`)
-              .join(",")}`;
-          }
-          if (wf.frameClause) {
-            overClause += ` ${wf.frameClause}`;
-          }
-          overClause += ")";
-
-          query = query.select(
-            this.knex.raw(`${windowClause} ${overClause} as ??`, [
-              ...(wf.partitionBy || []),
-              ...(wf.orderBy?.map((ob) => ob.field) || []),
-              wf.alias,
-            ])
-          );
+          const windowClause = this.adapter.buildWindowFunction(wf);
+          query = query.select(this.knex.raw(windowClause));
         });
       }
 
       // Apply enhanced window functions second
-      if (params.advancedWindows?.length) {
-        params.advancedWindows.forEach((wf) => {
-          let windowClause = this.buildWindowFunction(wf);
-          query = query.select(this.knex.raw(windowClause));
-        });
+      if (
+        params.advancedWindows &&
+        this.adapter.supportsFeature(DatabaseFeature.WindowFunctions)
+      ) {
+        if (params.advancedWindows?.length) {
+          params.advancedWindows.forEach((wf) => {
+            let windowClause = this.adapter.buildWindowFunction(wf);
+            query = query.select(this.knex.raw(windowClause));
+          });
+        }
       }
 
       // Apply basic filters
@@ -319,22 +330,10 @@ class QueryHandler {
         });
       }
 
-      // Update order by handling
+      // Update order by handling with adapter
       if (params.orderBy) {
-        params.orderBy.forEach(({ field, direction, nulls }) => {
-          if (nulls) {
-            // Handle nulls ordering using a properly typed approach
-            query = query.orderBy([
-              {
-                column: field,
-                order: direction || "asc",
-                nulls: nulls,
-              },
-            ]);
-          } else {
-            query = query.orderBy(field, direction || "asc");
-          }
-        });
+        const orderByClauses = this.adapter.buildOrderByClause(params.orderBy);
+        query = query.orderBy(orderByClauses);
       }
 
       // Apply pagination
@@ -374,33 +373,33 @@ class QueryHandler {
     }
   }
 
-  private buildWindowFunction(wf: any): string {
-    let fnCall =
-      wf.type === "row_number"
-        ? "ROW_NUMBER()"
-        : `${wf.type}(${wf.field || "*"})`;
+  // private buildWindowFunction(wf: any): string {
+  //   let fnCall =
+  //     wf.type === "row_number"
+  //       ? "ROW_NUMBER()"
+  //       : `${wf.type}(${wf.field || "*"})`;
 
-    let overClause = "OVER (";
-    if (wf.over?.partitionBy?.length) {
-      overClause += `PARTITION BY ${wf.over.partitionBy.join(",")}`;
-    }
+  //   let overClause = "OVER (";
+  //   if (wf.over?.partitionBy?.length) {
+  //     overClause += `PARTITION BY ${wf.over.partitionBy.join(",")}`;
+  //   }
 
-    if (wf.over?.orderBy?.length) {
-      overClause += ` ORDER BY ${wf.over.orderBy
-        .map((ob: any) => `${ob.field} ${ob.direction || "ASC"}`)
-        .join(",")}`;
-    }
+  //   if (wf.over?.orderBy?.length) {
+  //     overClause += ` ORDER BY ${wf.over.orderBy
+  //       .map((ob: any) => `${ob.field} ${ob.direction || "ASC"}`)
+  //       .join(",")}`;
+  //   }
 
-    if (wf.over?.frame) {
-      overClause += ` ${wf.over.frame.type} BETWEEN ${
-        wf.over.frame.start
-      } AND ${wf.over.frame.end || "CURRENT ROW"}`;
-    }
+  //   if (wf.over?.frame) {
+  //     overClause += ` ${wf.over.frame.type} BETWEEN ${
+  //       wf.over.frame.start
+  //     } AND ${wf.over.frame.end || "CURRENT ROW"}`;
+  //   }
 
-    overClause += ")";
+  //   overClause += ")";
 
-    return `${fnCall} ${overClause} AS ${wf.alias}`;
-  }
+  //   return `${fnCall} ${overClause} AS ${wf.alias}`;
+  // }
 
   private applyComputations(
     results: any[],
