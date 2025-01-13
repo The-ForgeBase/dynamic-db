@@ -9,7 +9,7 @@ interface TableInfo {
   //indexes: any;
 }
 
-interface DatabaseSchema {
+export interface DatabaseSchema {
   [tableName: string]: TableInfo;
 }
 
