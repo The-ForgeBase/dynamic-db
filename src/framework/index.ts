@@ -1,12 +1,34 @@
 import type { Knex } from "knex";
-import { PermissionService } from "../permissionService.js";
-import { enforcePermissions } from "../rlsManager.js";
+import { PermissionService } from "./permissionService.js";
+import { enforcePermissions } from "./rlsManager.js";
 import { QueryHandler } from "../sdk/server.js";
-import { DBInspector, type DatabaseSchema } from "../inspector.js";
-import KnexHooks from "../hookableDb.js";
+import { DBInspector, type DatabaseSchema } from "./inspector.js";
+import KnexHooks from "./knex-hooks.js";
 import type { FrameworkConfig, TablePermissions } from "./types.js";
-import type { ColumnDefinition } from "./types.js";
-import type { UserContext } from "../types.js";
+import type { UserContext } from "./types.js";
+import { createColumn } from "./database/column-utils.js";
+
+// Define the endpoints interface first
+export interface FrameworkEndpoints {
+  schema: {
+    get: (request: Request) => Promise<DatabaseSchema>;
+    create: (request: Request) => Promise<{
+      message: string;
+      tablename: string;
+      action: string;
+    }>;
+  };
+  data: {
+    query: <T>(request: Request, user?: UserContext) => Promise<T[]>;
+    create: (request: Request, user?: UserContext) => Promise<string[]>;
+    update: (request: Request, user?: UserContext) => Promise<void>;
+    delete: (request: Request, user?: UserContext) => Promise<void>;
+  };
+  permissions: {
+    get: (request: Request) => Promise<TablePermissions | undefined>;
+    set: (request: Request) => Promise<void>;
+  };
+}
 
 export class Framework {
   private queryHandler: QueryHandler;
@@ -94,7 +116,7 @@ export class Framework {
     return this.hooks.getKnexInstance();
   }
 
-  public endpoints = {
+  public endpoints: FrameworkEndpoints = {
     schema: {
       get: this.wrapHandler<DatabaseSchema>(
         async (request: Request): Promise<DatabaseSchema> => {
@@ -112,7 +134,8 @@ export class Framework {
         action: string;
       }>(async (request: Request) => {
         try {
-          const { action, tableName, columns } = await request.json();
+          const payload = await request.json();
+          const { action, tableName, columns } = payload;
 
           if (!action || !tableName) {
             throw new Error("Invalid request body");
@@ -122,7 +145,7 @@ export class Framework {
             await this.hooks
               .getKnexInstance()
               .schema.createTableIfNotExists(tableName, (table) => {
-                columns.forEach((col: any) => this.buildColumn(table, col));
+                columns.forEach((col: any) => createColumn(table, col));
               });
 
             this.permissionService.setPermissionsForTable(
@@ -326,39 +349,6 @@ export class Framework {
     });
 
     return queryParams;
-  }
-
-  private buildColumn(table: Knex.CreateTableBuilder, col: ColumnDefinition) {
-    let column: any;
-
-    switch (col.type) {
-      case "increments":
-        column = table.increments(col.name);
-        break;
-      case "string":
-        column = table.string(col.name);
-        break;
-      case "integer":
-        column = table.integer(col.name);
-        break;
-      case "boolean":
-        column = table.boolean(col.name);
-        break;
-      case "decimal":
-        column = table.decimal(col.name);
-        break;
-      case "timestamp":
-        column = table.timestamp(col.name);
-        break;
-      case "json":
-        column = table.json(col.name);
-        break;
-    }
-
-    if (col.primary) column.primary();
-    if (col.unique) column.unique();
-    if (col.nullable === false) column.notNullable();
-    if (col.default !== undefined) column.defaultTo(col.default);
   }
 }
 

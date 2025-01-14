@@ -1,12 +1,14 @@
 import { serve } from "@hono/node-server";
 import { Hono } from "hono";
 import knex from "knex";
-import KnexHooks from "./hookableDb.js";
-import { DBInspector } from "./inspector.js";
-import { PermissionService } from "./permissionService.js";
-import type { TablePermissions, UserContext } from "./types.js";
-import { enforcePermissions } from "./rlsManager.js";
+import KnexHooks from "./framework/knex-hooks.js";
+import { DBInspector } from "./framework/inspector.js";
+import { PermissionService } from "./framework/permissionService.js";
+import type { TablePermissions, UserContext } from "./framework/types.js";
+import { enforcePermissions } from "./framework/rlsManager.js";
 import { QueryHandler } from "./sdk/server.js";
+import { createDashboardRoutes } from "./dashboard/routes.js";
+import { Framework } from "./framework/index.js";
 
 // Initialize Knex with SQLite for simplicity
 const knexInstance = knex({
@@ -28,6 +30,17 @@ hookableDB.on("beforeQuery", ({ tableName, context }) => {
 });
 
 const app = new Hono();
+
+// Create framework instance for dashboard
+const framework = new Framework({
+  db: knexInstance,
+  hooks: hookableDB,
+  permissions: permissionService,
+  realtime: true,
+});
+
+// Mount dashboard routes
+app.route("/dashboard", createDashboardRoutes(framework));
 
 // check  "/records/:tableName" to see how the rls and permissions are enforced
 const user: UserContext = {
@@ -361,6 +374,7 @@ const port = 3000;
 
 async function startServer() {
   console.log(`Server is running on http://localhost:${port}`);
+  console.log(`Dashboard available at http://localhost:${port}/dashboard`);
   serve({
     fetch: app.fetch,
     port,

@@ -1,4 +1,4 @@
-import { permissionService } from "./index.js";
+import { permissionService } from "../index.js";
 import type {
   PermissionRule,
   UserContext,
@@ -16,6 +16,23 @@ function evaluatePermission(
       case "public":
         console.log("Public rule, allowing access");
         return true;
+
+      case "private":
+        console.log("Public rule, allowing access");
+        return false;
+
+      case "role":
+        if (!rule.roles || rule.roles.length === 0) {
+          return false;
+        }
+        if (
+          rule.roles &&
+          userContext.role &&
+          rule.roles?.includes(userContext.role)
+        ) {
+          return true;
+        }
+        return false;
 
       case "auth":
         if (userContext.userId) return true;
