@@ -1,9 +1,9 @@
-import { permissionService } from "./index.js";
+import { permissionService } from "../../index.js";
 import type {
   PermissionRule,
   UserContext,
   UserContextFields,
-} from "./types.js";
+} from "../types.js";
 
 function evaluatePermission(
   rules: PermissionRule[],
@@ -16,6 +16,23 @@ function evaluatePermission(
       case "public":
         console.log("Public rule, allowing access");
         return true;
+
+      case "private":
+        console.log("Public rule, allowing access");
+        return false;
+
+      case "role":
+        if (!rule.roles || rule.roles.length === 0) {
+          return false;
+        }
+        if (
+          rule.roles &&
+          userContext.role &&
+          rule.roles?.includes(userContext.role)
+        ) {
+          return true;
+        }
+        return false;
 
       case "auth":
         if (userContext.userId) return true;
@@ -108,9 +125,9 @@ function evaluatePermission(
 export async function enforcePermissions(
   tableName: string,
   operation: "SELECT" | "INSERT" | "UPDATE" | "DELETE",
-  rows: Record<string, any>[],
+  rows: Record<string, any> | Record<string, any>[],
   userContext: UserContext
-): Promise<Record<string, any>[]> {
+): Promise<Record<string, any>[] | Record<string, any>> {
   const tablePermissions = await permissionService.getPermissionsForTable(
     tableName
   );
@@ -139,7 +156,17 @@ export async function enforcePermissions(
     return rows;
   }
 
-  return rows.filter((row) => {
-    return evaluatePermission(rules, userContext, row);
-  });
+  if (Array.isArray(rows)) {
+    return rows.filter((row) => {
+      return evaluatePermission(rules, userContext, row);
+    });
+  }
+
+  const access = evaluatePermission(rules, userContext, rows);
+  if (!access) {
+    throw new Error(
+      `User does not have permission to perform operation "${operation}" on table "${tableName}"`
+    );
+  }
+  return rows;
 }
