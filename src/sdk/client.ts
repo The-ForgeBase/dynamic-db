@@ -1,4 +1,3 @@
-// types.ts
 export type WhereOperator =
   | "="
   | "!="
@@ -179,7 +178,7 @@ export interface ApiResponse<T> {
   id?: number;
 }
 
-// sdk.ts
+
 export class DatabaseSDK {
   private baseUrl: string;
   private validTables = ["users", "products", "orders"];

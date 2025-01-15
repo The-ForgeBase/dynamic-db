@@ -1,6 +1,6 @@
 import { DatabaseSDK } from "./src/sdk/client.js";
 
-// Types for our examples
+
 interface User {
   id: number;
   name: string;

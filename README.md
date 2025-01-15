@@ -5,8 +5,8 @@
 ## Features
 
 - **Dynamic Schema Management**
-  - Create and delete tables dynamically via API
-  - Support for various column types (string, integer, boolean, decimal) - Automatic primary key handling - Unique constraints support
+  - Create and delete tables dynamically via API (Sqlite, Postgres, MySql, MSSql, and any knex compatible database)
+  - Support for various column types (string, integer, boolean, decimal and more) - Automatic primary key handling - Unique constraints support
 - **Data Operations**
 
   - CRUD operations for any table
@@ -43,6 +43,15 @@
   - Operation-specific rules (SELECT/INSERT/UPDATE/DELETE)
   - Flexible permission rule configuration
   - Database-backed permission storage
+
+- **Multiple SDK (Server and Client side)**
+  - Check the example.ts file at the root of the folder
+  - Also check `src/sdk` for full code implementation
+
+- **Others**
+  - ClI for type generate `src/cli` in zod and ts
+  - Dashboard example `src/dashoard`
+  - Can be use as a package `src/framework` and `src/dashboard/route.ts`
 
 ## Quick Start
 
@@ -156,14 +165,6 @@ DELETE /permissions/users
 - SQLite (Database)
 - TypeScript
 
-## Limitations
-
-- This is an experimental project
-- Limited data type support
-- Basic validation only
-- Simple permission caching
-- No authentication system (implement your own)
-- No production-ready security features
 
 ## References
 
