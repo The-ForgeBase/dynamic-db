@@ -90,9 +90,11 @@ async function dropExistingForeignKeys(
   const foreignKeys = await inspector.foreignKeys(tableName);
 
     for (const fk of foreignKeys) {
-      await knex.schema.alterTable(tableName, table => {
-        table.dropForeign([fk.column]);
-      });
+      if (fk.column === columnName) {
+        await knex.schema.alterTable(tableName, table => {
+          table.dropForeign(fk.column);
+        });
+      }
     }
 
 }
