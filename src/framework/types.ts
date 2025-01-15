@@ -3,7 +3,7 @@ import type KnexHooks from "./database/knex-hooks.js";
 import type { PermissionService } from "./database/permissionService.js";
 import type { DatabaseSchema } from "./database/inspector.js";
 import type { QueryParams } from "../sdk/server.js";
-import type { ColumnDefinition } from "./database/types.js";
+import type { ColumnDefinition, UpdateColumnDefinition } from "./database/types.js";
 
 export type PermissionRule = {
   allow:
@@ -77,9 +77,14 @@ export interface ApiResponse<T = any> {
 }
 
 export interface SchemaCreateParams {
-  action: "create" | "delete";
   tableName: string;
   columns: ColumnDefinition[];
+}
+
+export interface ModifySchemaParams {
+  tableName: string;
+  action: 'addColumn' | 'deleteColumn' | 'updateColumn';
+  columns: ColumnDefinition[] | UpdateColumnDefinition[];
 }
 
 export interface DataQueryParams extends QueryParams {}
@@ -103,6 +108,12 @@ export interface FrameworkEndpoints {
       tablename: string;
       action: string;
     }>;
+    delete: (tableName: string) => Promise<{
+      message: string;
+      tablename: string;
+      action: string;
+    }>;
+    modify: (params: ModifySchemaParams) => Promise<any>;
   };
   data: {
     query: <T>(

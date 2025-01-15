@@ -26,17 +26,22 @@ export interface ColumnDefinition {
   default?: any;
 }
 
+export interface UpdateColumnDefinition {
+  currentName: string;
+  newName?: string;
+  type?: ColumnType;
+  currentType: ColumnType; // Added this to know the current column type
+  primary?: boolean;
+  unique?: boolean;
+  nullable?: boolean;
+  foreignKeys?: ForeignKey[];
+  default?: any;
+}
+
 export interface ForeignKey {
   columnName: string;
   references: {
     tableName: string;
     columnName: string;
   };
-}
-
-// Schema operation types
-export interface SchemaOperation {
-  action: "create" | "delete" | "alter";
-  tableName: string;
-  columns?: ColumnDefinition[];
 }

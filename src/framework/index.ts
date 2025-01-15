@@ -8,12 +8,14 @@ import type {
   DataQueryParams,
   FrameworkConfig,
   FrameworkEndpoints,
+  ModifySchemaParams,
   PermissionParams,
   SchemaCreateParams,
   TablePermissions,
 } from "./types.js";
 import type { UserContext } from "./types.js";
 import { createColumn } from "./database/column-utils.js";
+import { modifySchema } from "./database/schema.js";
 import { QueryHandler } from "./database/sdk/server.js";
 
 export class Framework {
@@ -103,13 +105,12 @@ export class Framework {
       },
       create: async (payload: SchemaCreateParams) => {
         try {
-          const { action, tableName, columns } = payload;
+          const { tableName, columns } = payload;
 
-          if (!action || !tableName) {
+          if (!tableName) {
             throw new Error("Invalid request body");
           }
 
-          if (action === "create") {
             await this.hooks
               .getKnexInstance()
               .schema.createTableIfNotExists(tableName, (table) => {
@@ -123,25 +124,38 @@ export class Framework {
             return {
               message: "Table created successfully",
               tablename: tableName,
-              action,
+              action: 'create',
             };
-          } else if (action === "delete") {
-            await this.hooks
-              .getKnexInstance()
-              .schema.dropTableIfExists(tableName);
 
-            return {
-              message: "Table deleted successfully",
-              tablename: tableName,
-              action,
-            };
-          }
-
-          throw new Error("Invalid action");
         } catch (error: any) {
           throw new Error(error);
         }
       },
+      delete: async (tableName: string) => {
+        try {
+          await this.hooks
+              .getKnexInstance()
+              .schema.dropTableIfExists(tableName);
+
+            await this.permissionService.deletePermissionsForTable(tableName)
+
+            return {
+              message: "Table deleted successfully",
+              tablename: tableName,
+              action: 'delete',
+            };
+        } catch(error: any) {
+           throw new Error(error)
+        }
+      },
+      modify: async (payload: ModifySchemaParams) => {
+        try {          
+          return await modifySchema(this.hooks.getKnexInstance(), payload);
+        } catch (error: any) {
+          throw new Error(error);
+        }
+      },
+
     },
 
     data: {

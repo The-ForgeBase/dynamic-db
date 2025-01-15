@@ -1,5 +1,7 @@
 import type { Knex } from "knex";
-import type { ColumnDefinition, ForeignKey } from "./types.js";
+import type { ColumnDefinition, ForeignKey, UpdateColumnDefinition } from "./types.js";
+import { default as schemaInspectorImport } from "knex-schema-inspector";
+const schemaInspector = schemaInspectorImport.default;
 
 export function createColumn(
   table: Knex.TableBuilder,
@@ -75,4 +77,53 @@ export function createColumn(
   }
 
   return column;
+}
+
+// Helper function to check for foreign keys
+async function dropExistingForeignKeys(
+  knex: Knex,
+  tableName: string,
+  columnName: string
+) {
+  const inspector = schemaInspector(knex);
+  // Get foreign key constraints
+  const foreignKeys = await inspector.foreignKeys(tableName);
+
+    for (const fk of foreignKeys) {
+      await knex.schema.alterTable(tableName, table => {
+        table.dropForeign([fk.column]);
+      });
+    }
+
+}
+
+
+
+// Update column function using drop and recreate approach
+export async function updateColumn(
+  knex: Knex,
+  tableName: string,
+  columnDef: UpdateColumnDefinition
+) {
+  // First, check and drop any existing foreign keys
+  await dropExistingForeignKeys(knex, tableName, columnDef.currentName);
+
+  // Then do all modifications in a single alter table call
+  await knex.schema.alterTable(tableName, table => {
+    // Drop the existing column
+    table.dropColumn(columnDef.currentName);
+
+    // Recreate the column with new definition
+    let column = createColumn(table, {
+      name: columnDef.newName || columnDef.currentName,
+      type: columnDef.type || columnDef.currentType,
+      nullable: columnDef.nullable ?? true,
+      primary: columnDef.primary,
+      unique: columnDef.unique,
+      foreignKeys: columnDef.foreignKeys,
+      default: columnDef.default
+    });
+
+    return column
+  });
 }
