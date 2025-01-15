@@ -1,0 +1,1 @@
+print(default_api.natural_language_write_file(language = None, path = "src/cli/README.md", prompt = "Write a readme for the cli folder, explaining that this folder is responsible for all the cli logic, it allows to create schema for example, and to migrate the database using zod or valibot."))
