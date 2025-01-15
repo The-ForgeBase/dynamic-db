@@ -1,4 +1,4 @@
-import type { DatabaseSchema } from "../../framework/inspector.js";
+import type { DatabaseSchema } from "../../framework/database/inspector.js";
 
 interface SchemaViewProps {
   schema: DatabaseSchema;

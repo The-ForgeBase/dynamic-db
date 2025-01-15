@@ -1,5 +1,5 @@
 import type { Knex } from "knex";
-import type { TablePermissions } from "./types.js";
+import type { TablePermissions } from "../types.js";
 
 class PermissionService {
   constructor(private knex: Knex) {
@@ -20,6 +20,7 @@ class PermissionService {
   async getPermissionsForTable(
     tableName: string
   ): Promise<TablePermissions | undefined> {
+    // console.log("getPermissionsForTable", tableName);
     const result = await this.knex("table_permissions")
       .where({ table_name: tableName })
       .first();

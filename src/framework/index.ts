@@ -1,34 +1,20 @@
 import type { Knex } from "knex";
-import { PermissionService } from "./permissionService.js";
-import { enforcePermissions } from "./rlsManager.js";
-import { QueryHandler } from "../sdk/server.js";
-import { DBInspector, type DatabaseSchema } from "./inspector.js";
-import KnexHooks from "./knex-hooks.js";
-import type { FrameworkConfig, TablePermissions } from "./types.js";
+import { PermissionService } from "./database/permissionService.js";
+import { enforcePermissions } from "./database/rlsManager.js";
+import { DBInspector, type DatabaseSchema } from "./database/inspector.js";
+import KnexHooks from "./database/knex-hooks.js";
+import type {
+  DataMutationParams,
+  DataQueryParams,
+  FrameworkConfig,
+  FrameworkEndpoints,
+  PermissionParams,
+  SchemaCreateParams,
+  TablePermissions,
+} from "./types.js";
 import type { UserContext } from "./types.js";
 import { createColumn } from "./database/column-utils.js";
-
-// Define the endpoints interface first
-export interface FrameworkEndpoints {
-  schema: {
-    get: (request: Request) => Promise<DatabaseSchema>;
-    create: (request: Request) => Promise<{
-      message: string;
-      tablename: string;
-      action: string;
-    }>;
-  };
-  data: {
-    query: <T>(request: Request, user?: UserContext) => Promise<T[]>;
-    create: (request: Request, user?: UserContext) => Promise<string[]>;
-    update: (request: Request, user?: UserContext) => Promise<void>;
-    delete: (request: Request, user?: UserContext) => Promise<void>;
-  };
-  permissions: {
-    get: (request: Request) => Promise<TablePermissions | undefined>;
-    set: (request: Request) => Promise<void>;
-  };
-}
+import { QueryHandler } from "./database/sdk/server.js";
 
 export class Framework {
   private queryHandler: QueryHandler;
@@ -98,16 +84,6 @@ export class Framework {
     }
   }
 
-  private wrapHandler<T>(handler: Function) {
-    return async (request: Request): Promise<T> => {
-      try {
-        return await handler(request);
-      } catch (err: any) {
-        throw new Error(err);
-      }
-    };
-  }
-
   public getEndpoints() {
     return this.endpoints;
   }
@@ -118,23 +94,15 @@ export class Framework {
 
   public endpoints: FrameworkEndpoints = {
     schema: {
-      get: this.wrapHandler<DatabaseSchema>(
-        async (request: Request): Promise<DatabaseSchema> => {
-          try {
-            return await this.dbInspector.getDatabaseSchema();
-          } catch (error: any) {
-            throw new Error(error);
-          }
-        }
-      ),
-
-      create: this.wrapHandler<{
-        message: string;
-        tablename: string;
-        action: string;
-      }>(async (request: Request) => {
+      get: async (): Promise<DatabaseSchema> => {
         try {
-          const payload = await request.json();
+          return await this.dbInspector.getDatabaseSchema();
+        } catch (error: any) {
+          throw new Error(error);
+        }
+      },
+      create: async (payload: SchemaCreateParams) => {
+        try {
           const { action, tableName, columns } = payload;
 
           if (!action || !tableName) {
@@ -173,111 +141,104 @@ export class Framework {
         } catch (error: any) {
           throw new Error(error);
         }
-      }),
+      },
     },
 
     data: {
-      query: this.wrapHandler<any[]>(
-        async (request: Request, user?: UserContext) => {
-          try {
-            const url = new URL(request.url);
-            const tableName = url.pathname.split("/").pop()!;
-            this.validateTable(tableName);
-
-            const params = Object.fromEntries(url.searchParams);
-            const queryParams = this.parseQueryParams(params);
-
-            const records = await this.hooks.query(
-              tableName,
-              (query) => this.queryHandler.buildQuery(queryParams, query),
-              queryParams
-            );
-
-            if (this.config.enforceRls && user) {
-              return enforcePermissions(tableName, "SELECT", records, user);
-            }
-
-            return records;
-          } catch (error: any) {
-            throw new Error(error);
-          }
-        }
-      ) as <T>(request: Request, user?: UserContext) => Promise<T[]>,
-
-      create: this.wrapHandler<string[]>(
-        async (request: Request, user?: UserContext) => {
-          try {
-            const url = new URL(request.url);
-            const table = url.pathname.split("/").pop()!;
-            const { data } = await request.json();
-
-            this.validateTable(table);
-
-            // Handle both single record and array of records
-            const isArray = Array.isArray(data);
-            const records = isArray ? data : [data];
-
-            // Validate records
-            if (
-              !records.length ||
-              !records.every(
-                (record) =>
-                  typeof record === "object" && Object.keys(record).length > 0
-              )
-            ) {
-              throw new Error("Invalid request body");
-            }
-
-            if (this.config.enforceRls && user) {
-              return enforcePermissions(table, "INSERT", records, user);
-            }
-
-            const result = this.hooks.mutate(
-              table,
-              "create",
-              async (query) => query.insert(records).returning("id"),
-              records
-            );
-
-            return result;
-          } catch (error: any) {
-            throw new Error(error);
-          }
-        }
-      ),
-
-      update: this.wrapHandler(async (request: Request, user?: UserContext) => {
+      query: async (
+        tableName: string,
+        params: DataQueryParams,
+        user?: UserContext
+      ) => {
         try {
-          const url = new URL(request.url);
-          const [table, id] = url.pathname.split("/").slice(-2);
-          const { data } = await request.json();
-          this.validateTable(table);
+          this.validateTable(tableName);
+          const queryParams = this.parseQueryParams(params);
+
+          const records = await this.hooks.query(
+            tableName,
+            (query) => this.queryHandler.buildQuery(queryParams, query),
+            queryParams
+          );
 
           if (this.config.enforceRls && user) {
-            return enforcePermissions(table, "UPDATE", data, user);
+            return enforcePermissions(tableName, "SELECT", records, user);
+          }
+
+          return records as any;
+        } catch (error: any) {
+          throw new Error(error);
+        }
+      },
+
+      create: async (params: DataMutationParams, user?: UserContext) => {
+        try {
+          const { data, tableName } = params;
+
+          this.validateTable(tableName);
+
+          // Handle both single record and array of records
+          const isArray = Array.isArray(data);
+          const records = isArray ? data : [data];
+
+          // Validate records
+          if (
+            !records.length ||
+            !records.every(
+              (record) =>
+                typeof record === "object" && Object.keys(record).length > 0
+            )
+          ) {
+            throw new Error("Invalid request body");
+          }
+
+          if (this.config.enforceRls && user) {
+            return enforcePermissions(tableName, "INSERT", records, user);
           }
 
           const result = this.hooks.mutate(
-            table,
+            tableName,
+            "create",
+            async (query) => query.insert(records).returning("id"),
+            records
+          );
+
+          return result;
+        } catch (error: any) {
+          throw new Error(error);
+        }
+      },
+
+      update: async (params: DataMutationParams, user?: UserContext) => {
+        try {
+          const { id, tableName, data } = params;
+          this.validateTable(tableName);
+
+          if (this.config.enforceRls && user) {
+            return enforcePermissions(tableName, "UPDATE", data, user);
+          }
+
+          const result = this.hooks.mutate(
+            tableName,
             "update",
             async (query) => query.where({ id }).update(data),
 
             { id, ...data }
           );
+
+          return result;
         } catch (error: any) {
           throw new Error(error);
         }
-      }),
+      },
 
-      delete: this.wrapHandler(async (request: Request, user?: UserContext) => {
+      delete: async (params: DataMutationParams, user?: UserContext) => {
         try {
-          const url = new URL(request.url);
-          const [table, id] = url.pathname.split("/").slice(-2);
-          this.validateTable(table);
+          const { id, tableName } = params;
+          this.validateTable(tableName);
 
           // get the record to enforce permissions
           const record = await this.hooks.query(
-            table,
+            tableName,
             (query) => {
               return query.where({ id });
             },
@@ -285,11 +246,11 @@ export class Framework {
           );
 
           if (this.config.enforceRls && user) {
-            return enforcePermissions(table, "DELETE", record, user);
+            return enforcePermissions(tableName, "DELETE", record, user);
           }
 
           return this.hooks.mutate(
-            table,
+            tableName,
             "delete",
             async (query) => query.where({ id }).delete(),
             { id }
@@ -297,35 +258,35 @@ export class Framework {
         } catch (error: any) {
           throw new Error(error);
         }
-      }),
+      },
     },
 
     permissions: {
-      get: this.wrapHandler<TablePermissions | undefined>(
-        async (request: Request) => {
-          try {
-            const url = new URL(request.url);
-            const table = url.pathname.split("/").pop()!;
-            return this.permissionService.getPermissionsForTable(table);
-          } catch (error: any) {
-            throw new Error(error);
-          }
-        }
-      ),
-
-      set: this.wrapHandler(async (request: Request) => {
+      get: async (params: PermissionParams) => {
         try {
-          const url = new URL(request.url);
-          const table = url.pathname.split("/").pop()!;
-          const permissions = await request.json();
+          const { tableName } = params;
+          return this.permissionService.getPermissionsForTable(tableName);
+        } catch (error: any) {
+          throw new Error(error);
+        }
+      },
+
+      set: async (params: PermissionParams) => {
+        try {
+          const { tableName, permissions } = params;
+
+          if (!permissions) {
+            throw new Error("Permissions object is required");
+          }
+
           return this.permissionService.setPermissionsForTable(
-            table,
+            tableName,
             permissions
           );
         } catch (error: any) {
           throw new Error(error);
         }
-      }),
+      },
     },
   };
 

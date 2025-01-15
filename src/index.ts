@@ -1,11 +1,10 @@
 import { serve } from "@hono/node-server";
 import { Hono } from "hono";
 import knex from "knex";
-import KnexHooks from "./framework/knex-hooks.js";
-import { DBInspector } from "./framework/inspector.js";
-import { PermissionService } from "./framework/permissionService.js";
+import KnexHooks from "./framework/database/knex-hooks.js";
+import { DBInspector } from "./framework/database/inspector.js";
+import { PermissionService } from "./framework/database/permissionService.js";
 import type { TablePermissions, UserContext } from "./framework/types.js";
-import { enforcePermissions } from "./framework/rlsManager.js";
 import { QueryHandler } from "./sdk/server.js";
 import { createDashboardRoutes } from "./dashboard/routes.js";
 import { Framework } from "./framework/index.js";
@@ -25,7 +24,7 @@ const hookableDB = new KnexHooks(knexInstance);
 
 // Real-time listener
 hookableDB.on("beforeQuery", ({ tableName, context }) => {
-  console.log(`[Real-Time Event] Mutation on ${tableName}:`, context);
+  console.log(`[Real-Time Event] Query on ${tableName}:`, context);
   // Push updates via WebSocket, SSE, etc.
 });
 

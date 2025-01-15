@@ -14,7 +14,7 @@ export const createDashboardRoutes = (framework: Framework) => {
 
   // Schema routes
   app.get("/schema", async (c) => {
-    const schema = await framework.endpoints.schema.get(c.req.raw);
+    const schema = await framework.endpoints.schema.get();
     return c.html(
       <Layout title="Schema">
         <SchemaView schema={schema} />
@@ -29,50 +29,31 @@ export const createDashboardRoutes = (framework: Framework) => {
     const rawColumns = formData.columns;
 
     // Handle array of columns from form data
-    const columns = Array.isArray(rawColumns)
+    const columns: any[] = Array.isArray(rawColumns)
       ? rawColumns
       : typeof rawColumns === "string"
       ? [rawColumns]
       : [];
 
-    const formattedColumns = columns.map((col: any) => ({
-      name: col.name || col,
-      type: col.type || "string",
-      primary: col.primary === "on",
-      unique: col.unique === "on",
-      notNullable: col.primary === "on",
-    }));
-
-    // Create request object for framework endpoint
-    const createRequest = new Request("http://localhost/schema", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        action: "create",
-        tableName,
-        columns: formattedColumns,
-      }),
+    await framework.endpoints.schema.create({
+      action: "create",
+      tableName,
+      columns: columns,
     });
 
-    await framework.endpoints.schema.create(createRequest);
-
-    const schema = await framework.endpoints.schema.get(c.req.raw);
+    const schema = await framework.endpoints.schema.get();
     return c.html(<SchemaView schema={schema} />);
   });
 
   // Data routes
   app.get("/data", async (c) => {
-    const schema = await framework.endpoints.schema.get(c.req.raw);
+    const schema = await framework.endpoints.schema.get();
     const tables = Object.keys(schema);
     const currentTable = c.req.query("table");
 
     let data: any[] = [];
     if (currentTable) {
-      const url = new URL(c.req.url);
-      url.pathname = `/api/data/${currentTable}`;
-      data = await framework.endpoints.data.query(new Request(url));
+      data = await framework.endpoints.data.query(currentTable, {});
     }
 
     return c.html(
@@ -82,17 +63,57 @@ export const createDashboardRoutes = (framework: Framework) => {
     );
   });
 
+  // Data mutations
+  app.post("/data/:table", async (c) => {
+    const tableName = c.req.param("table");
+    const data = await c.req.json();
+
+    const result = await framework.endpoints.data.create({
+      tableName,
+      data,
+    });
+
+    return c.json(result);
+  });
+
+  app.put("/data/:table/:id", async (c) => {
+    const tableName = c.req.param("table");
+    const id = c.req.param("id");
+    const data = await c.req.json();
+
+    const result = await framework.endpoints.data.update({
+      tableName,
+      id,
+      data,
+    });
+
+    return c.json(result);
+  });
+
+  app.delete("/data/:table/:id", async (c) => {
+    const tableName = c.req.param("table");
+    const id = c.req.param("id");
+
+    const result = await framework.endpoints.data.delete({
+      tableName,
+      id,
+      data: {},
+    });
+
+    return c.json(result);
+  });
+
   // Permissions routes
   app.get("/permissions", async (c) => {
-    const schema = await framework.endpoints.schema.get(c.req.raw);
+    const schema = await framework.endpoints.schema.get();
     const tables = Object.keys(schema);
     const currentTable = c.req.query("table");
 
     let permissions;
     if (currentTable) {
-      const url = new URL(c.req.url);
-      url.pathname = `/api/permissions/${currentTable}`;
-      permissions = await framework.endpoints.permissions.get(new Request(url));
+      permissions = await framework.endpoints.permissions.get({
+        tableName: currentTable,
+      });
     }
 
     return c.html(
@@ -104,6 +125,19 @@ export const createDashboardRoutes = (framework: Framework) => {
         />
       </Layout>
     );
+  });
+
+  // Permission mutations
+  app.post("/permissions/:table", async (c) => {
+    const tableName = c.req.param("table");
+    const permissions = await c.req.json();
+
+    await framework.endpoints.permissions.set({
+      tableName,
+      permissions,
+    });
+
+    return c.json({ success: true });
   });
 
   return app;

@@ -3,20 +3,29 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/index.ts",
-    "example": "tsx examples.ts"
+    "example": "tsx examples.ts",
+    "schema": "tsx src/cli/schema.ts -u http://localhost:3000/schema -o types.ts",
+    "zod": "tsx src/cli/zod-valibot.ts -u http://localhost:3000/schema -o zod-schema.ts -t zod",
+    "valibot": "tsx src/cli/zod-valibot.ts -u http://localhost:3000/schema -o valibot-schema.ts -t valibot"
   },
   "dependencies": {
     "@hono/node-server": "^1.13.7",
+    "axios": "^1.7.9",
     "better-sqlite3": "^11.7.2",
+    "commander": "^13.0.0",
+    "express": "^4.21.2",
     "hono": "^4.6.16",
     "knex": "^3.1.0",
     "knex-schema-inspector": "3.0.0",
     "kysely": "^0.27.5",
     "kysely-codegen": "^0.17.0",
-    "sqlite3": "^5.1.7"
+    "sqlite3": "^5.1.7",
+    "valibot": "1.0.0-beta.11",
+    "zod": "^3.24.1"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.12",
+    "@types/express": "^5.0.0",
     "@types/node": "^20.11.17",
     "tsx": "^4.7.1"
   }

@@ -1,6 +1,9 @@
 import type { Knex } from "knex";
-import type KnexHooks from "./knex-hooks.js";
-import type { PermissionService } from "./permissionService.js";
+import type KnexHooks from "./database/knex-hooks.js";
+import type { PermissionService } from "./database/permissionService.js";
+import type { DatabaseSchema } from "./database/inspector.js";
+import type { QueryParams } from "../sdk/server.js";
+import type { ColumnDefinition } from "./database/types.js";
 
 export type PermissionRule = {
   allow:
@@ -71,4 +74,48 @@ export interface ApiResponse<T = any> {
   data?: T;
   error?: string;
   status?: number;
+}
+
+export interface SchemaCreateParams {
+  action: "create" | "delete";
+  tableName: string;
+  columns: ColumnDefinition[];
+}
+
+export interface DataQueryParams extends QueryParams {}
+
+export interface DataMutationParams {
+  tableName: string;
+  data: Record<string, any> | Array<Record<string, any>>;
+  id?: string | number;
+}
+
+export interface PermissionParams {
+  tableName: string;
+  permissions?: TablePermissions;
+}
+
+export interface FrameworkEndpoints {
+  schema: {
+    get: () => Promise<DatabaseSchema>;
+    create: (params: SchemaCreateParams) => Promise<{
+      message: string;
+      tablename: string;
+      action: string;
+    }>;
+  };
+  data: {
+    query: <T>(
+      tableName: string,
+      params: DataQueryParams,
+      user?: UserContext
+    ) => Promise<T[]>;
+    create: (params: DataMutationParams, user?: UserContext) => Promise<any>;
+    update: (params: DataMutationParams, user?: UserContext) => Promise<any>;
+    delete: (params: DataMutationParams, user?: UserContext) => Promise<any>;
+  };
+  permissions: {
+    get: (params: PermissionParams) => Promise<TablePermissions | undefined>;
+    set: (params: PermissionParams) => Promise<any>;
+  };
 }
