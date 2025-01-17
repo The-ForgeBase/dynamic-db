@@ -1,6 +1,5 @@
 import { DatabaseSDK } from "./src/sdk/client.js";
 
-
 interface User {
   id: number;
   name: string;
@@ -9,6 +8,9 @@ interface User {
   department: string;
   salary: number;
   hireDate: Date;
+  status: string;
+  experience: number;
+  lastName: string;
 }
 
 interface Order {
@@ -17,6 +19,7 @@ interface Order {
   total: number;
   status: string;
   createdAt: Date;
+  revenue: number;
 }
 
 interface Product {

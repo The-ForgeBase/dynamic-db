@@ -36,6 +36,7 @@ export const createDashboardRoutes = (framework: Framework) => {
       : [];
 
     await framework.endpoints.schema.create({
+      action: "create",
       tableName,
       columns: columns,
     });

@@ -1,3 +1,5 @@
+type FieldKeys<T> = keyof T;
+
 export type WhereOperator =
   | "="
   | "!="
@@ -14,27 +16,27 @@ export type WhereOperator =
 
 export type GroupOperator = "AND" | "OR";
 
-export interface WhereClause {
-  field: string;
+export interface WhereClause<T> {
+  field: FieldKeys<T>;
   operator: WhereOperator;
   value: any;
   boolean?: GroupOperator;
 }
 
-export interface WhereGroup {
+export interface WhereGroup<T> {
   type: GroupOperator;
-  clauses: (WhereClause | WhereGroup)[];
+  clauses: (WhereClause<T> | WhereGroup<T>)[];
 }
 
-export interface WhereBetweenClause {
-  field: string;
+export interface WhereBetweenClause<T> {
+  field: FieldKeys<T>;
   operator: "between";
   value: [any, any];
   boolean?: GroupOperator;
 }
 
-export interface OrderByClause {
-  field: string;
+export interface OrderByClause<T> {
+  field: FieldKeys<T>;
   direction?: "asc" | "desc";
   nulls?: "first" | "last";
 }
@@ -44,19 +46,19 @@ export interface RawExpression {
   bindings?: any[];
 }
 
-export interface HavingClause {
-  field: string;
+export interface HavingClause<T> {
+  field: FieldKeys<T>;
   operator: WhereOperator;
   value: any;
 }
 
-export interface AggregateOptions {
+export interface AggregateOptions<T> {
   type: "count" | "sum" | "avg" | "min" | "max";
-  field: string;
+  field: FieldKeys<T>;
   alias?: string;
 }
 
-export interface WindowFunction {
+export interface WindowFunction<T> {
   type:
     | "row_number"
     | "rank"
@@ -72,28 +74,28 @@ export interface WindowFunction {
     | "max"
     | "nth_value"
     | "ntile";
-  field?: string;
+  field?: FieldKeys<T>;
   alias: string;
-  partitionBy?: string[];
-  orderBy?: OrderByClause[];
+  partitionBy?: FieldKeys<T>[];
+  orderBy?: OrderByClause<T>[];
   frameClause?: string;
 }
 
-export interface CTE {
+export interface CTE<T extends Record<string, any>> {
   name: string;
-  query: QueryBuilder<any>;
-  columns?: string[];
+  query: QueryBuilder<T>;
+  columns?: FieldKeys<T>[];
 }
 
-export interface TransformConfig {
+export interface TransformConfig<T> {
   groupBy?: string[];
   pivot?: {
     column: string;
     values: string[];
-    aggregate: AggregateOptions;
+    aggregate: AggregateOptions<T>;
   };
   flatten?: boolean;
-  select?: string[];
+  select?: FieldKeys<T>[];
   compute?: Record<string, (row: any) => any>;
 }
 
@@ -103,31 +105,31 @@ export interface ExplainOptions {
   format?: "text" | "json";
 }
 
-export interface RecursiveCTE extends CTE {
+export interface RecursiveCTE<T extends Record<string, any>> extends CTE<T> {
   isRecursive: true;
-  initialQuery: QueryBuilder<any>;
-  recursiveQuery: QueryBuilder<any>;
+  initialQuery: QueryBuilder<T>;
+  recursiveQuery: QueryBuilder<T>;
   unionAll?: boolean;
 }
 
-export interface WindowFunctionAdvanced extends WindowFunction {
+export interface WindowFunctionAdvanced<T> extends WindowFunction<T> {
   over?: {
-    partitionBy?: string[];
-    orderBy?: OrderByClause[];
+    partitionBy?: FieldKeys<T>[];
+    orderBy?: OrderByClause<T>[];
     frame?: {
       type: "ROWS" | "RANGE";
       start: "UNBOUNDED PRECEDING" | "CURRENT ROW" | number;
       end?: "UNBOUNDED FOLLOWING" | "CURRENT ROW" | number;
     };
   };
-  filter?: WhereClause[];
+  filter?: WhereClause<T>[];
 }
 
-export interface CacheConfig {
+export interface CacheConfig<T extends Record<string, any>> {
   ttl: number;
   key?: string;
   tags?: string[];
-  condition?: (params: QueryParams) => boolean;
+  condition?: (params: QueryParams<T>) => boolean;
 }
 
 export interface QueryValidation {
@@ -140,44 +142,43 @@ export interface QueryValidation {
   suggestions?: boolean;
 }
 
-export interface QueryParams {
-  filter?: Record<string, any>;
-  whereRaw?: WhereClause[];
-  whereBetween?: WhereBetweenClause[];
-  whereNull?: string[];
-  whereNotNull?: string[];
-  whereIn?: Record<string, any[]>;
-  whereNotIn?: Record<string, any[]>;
+export interface QueryParams<T extends Record<string, any>> {
+  filter?: Partial<T>;
+  whereRaw?: WhereClause<T>[];
+  whereBetween?: WhereBetweenClause<T>[];
+  whereNull?: FieldKeys<T>[];
+  whereNotNull?: FieldKeys<T>[];
+  whereIn?: { [K in FieldKeys<T>]?: any[] };
+  whereNotIn?: { [K in FieldKeys<T>]?: any[] };
   whereExists?: RawExpression[];
-  whereGroups?: WhereGroup[];
-  orderBy?: OrderByClause[];
-  groupBy?: string[];
-  having?: HavingClause[];
-  aggregates?: AggregateOptions[];
+  whereGroups?: WhereGroup<T>[];
+  orderBy?: OrderByClause<T>[];
+  groupBy?: FieldKeys<T>[];
+  having?: HavingClause<T>[];
+  aggregates?: AggregateOptions<T>[];
   rawExpressions?: RawExpression[];
   limit?: number;
   offset?: number;
-  windowFunctions?: WindowFunction[];
-  ctes?: CTE[];
-  transforms?: TransformConfig;
+  windowFunctions?: WindowFunction<T>[];
+  ctes?: CTE<T>[];
+  transforms?: TransformConfig<T>;
   explain?: ExplainOptions;
-  recursiveCtes?: RecursiveCTE[];
-  advancedWindows?: WindowFunctionAdvanced[];
-  select?: string[];
+  recursiveCtes?: RecursiveCTE<T>[];
+  advancedWindows?: WindowFunctionAdvanced<T>[];
+  select?: FieldKeys<T>[];
 }
 
 export interface QueryOptions {
   execute?: boolean;
 }
 
-export interface ApiResponse<T> {
+export interface ApiResponse<T extends Record<string, any>> {
   records?: T[];
-  params?: QueryParams;
+  params?: QueryParams<T>;
   message?: string;
   error?: string;
   id?: number;
 }
-
 
 export class DatabaseSDK {
   private baseUrl: string;
@@ -193,9 +194,9 @@ export class DatabaseSDK {
    * @param params Query parameters including filters and pagination
    * @returns Promise containing the fetched records
    */
-  async getRecords<T>(
+  async getRecords<T extends Record<string, any>>(
     tableName: string,
-    params: QueryParams = {},
+    params: QueryParams<T> = {},
     options: QueryOptions = { execute: true }
   ): Promise<ApiResponse<T>> {
     // Validate table name
@@ -222,7 +223,9 @@ export class DatabaseSDK {
     return this.fetchApi<ApiResponse<T>>(url);
   }
 
-  private serializeQueryParams(params: QueryParams): Record<string, string> {
+  private serializeQueryParams<T extends Record<string, any>>(
+    params: QueryParams<T>
+  ): Record<string, string> {
     const serialized: Record<string, string> = {};
 
     // any param that is type of object should be serialized to JSON
@@ -354,9 +357,9 @@ export class DatabaseSDK {
  * Query builder class for more fluent API usage
  */
 class QueryBuilder<T extends Record<string, any>> {
-  private params: QueryParams = {};
-  private currentGroup?: WhereGroup;
-  private ctes: Map<string, CTE> = new Map();
+  private params: QueryParams<T> = {};
+  private currentGroup?: WhereGroup<T>;
+  private ctes: Map<string, CTE<T>> = new Map();
 
   constructor(private sdk: DatabaseSDK, private tableName: string) {}
 
@@ -365,8 +368,8 @@ class QueryBuilder<T extends Record<string, any>> {
    */
   withRecursive(
     name: string,
-    initialQuery: QueryBuilder<any>,
-    recursiveQuery: QueryBuilder<any>,
+    initialQuery: QueryBuilder<T>,
+    recursiveQuery: QueryBuilder<T>,
     options: { unionAll?: boolean; columns?: string[] } = {}
   ): this {
     if (!this.params.recursiveCtes) {
@@ -390,9 +393,9 @@ class QueryBuilder<T extends Record<string, any>> {
    * Advanced window function
    */
   windowAdvanced(
-    type: WindowFunction["type"],
+    type: WindowFunction<T>["type"],
     alias: string,
-    config: Partial<WindowFunctionAdvanced>
+    config: Partial<WindowFunctionAdvanced<T>>
   ): this {
     if (!this.params.advancedWindows) {
       this.params.advancedWindows = [];
@@ -411,9 +414,9 @@ class QueryBuilder<T extends Record<string, any>> {
    * Add a window function
    */
   window(
-    type: WindowFunction["type"],
+    type: WindowFunction<T>["type"],
     alias: string,
-    config: Partial<Omit<WindowFunction, "type" | "alias">> = {}
+    config: Partial<Omit<WindowFunction<T>, "type" | "alias">> = {}
   ): this {
     if (!this.params.windowFunctions) {
       this.params.windowFunctions = [];
@@ -437,12 +440,16 @@ class QueryBuilder<T extends Record<string, any>> {
   rowNumber(
     alias: string,
     partitionBy?: string[],
-    orderBy?: OrderByClause[]
+    orderBy?: OrderByClause<T>[]
   ): this {
     return this.window("row_number", alias, { partitionBy, orderBy });
   }
 
-  rank(alias: string, partitionBy?: string[], orderBy?: OrderByClause[]): this {
+  rank(
+    alias: string,
+    partitionBy?: string[],
+    orderBy?: OrderByClause<T>[]
+  ): this {
     return this.window("rank", alias, { partitionBy, orderBy });
   }
 
@@ -450,7 +457,7 @@ class QueryBuilder<T extends Record<string, any>> {
     field: string,
     alias: string,
     partitionBy?: string[],
-    orderBy?: OrderByClause[]
+    orderBy?: OrderByClause<T>[]
   ): this {
     return this.window("lag", alias, { field, partitionBy, orderBy });
   }
@@ -459,7 +466,7 @@ class QueryBuilder<T extends Record<string, any>> {
     field: string,
     alias: string,
     partitionBy?: string[],
-    orderBy?: OrderByClause[]
+    orderBy?: OrderByClause<T>[]
   ): this {
     return this.window("lead", alias, { field, partitionBy, orderBy });
   }
@@ -469,10 +476,10 @@ class QueryBuilder<T extends Record<string, any>> {
    */
   with(
     name: string,
-    queryOrCallback: QueryBuilder<any> | ((query: QueryBuilder<any>) => void),
-    columns?: string[]
+    queryOrCallback: QueryBuilder<T> | ((query: QueryBuilder<T>) => void),
+    columns?: FieldKeys<T>[]
   ): this {
-    let query: QueryBuilder<any>;
+    let query: QueryBuilder<T>;
 
     if (typeof queryOrCallback === "function") {
       query = new QueryBuilder(this.sdk, this.tableName);
@@ -484,13 +491,13 @@ class QueryBuilder<T extends Record<string, any>> {
     this.ctes.set(name, {
       name,
       query,
-      columns,
+      columns: columns || [],
     });
 
     if (!this.params.ctes) {
       this.params.ctes = [];
     }
-    this.params.ctes.push({ name, query, columns });
+    this.params.ctes.push({ name, query, columns: columns || [] });
 
     return this;
   }
@@ -498,7 +505,7 @@ class QueryBuilder<T extends Record<string, any>> {
   /**
    * Transform the result set
    */
-  transform(config: TransformConfig): this {
+  transform(config: TransformConfig<T>): this {
     this.params.transforms = {
       ...this.params.transforms,
       ...config,
@@ -509,7 +516,11 @@ class QueryBuilder<T extends Record<string, any>> {
   /**
    * Pivot the result set
    */
-  pivot(column: string, values: string[], aggregate: AggregateOptions): this {
+  pivot(
+    column: string,
+    values: string[],
+    aggregate: AggregateOptions<T>
+  ): this {
     return this.transform({
       pivot: {
         column,
@@ -522,7 +533,7 @@ class QueryBuilder<T extends Record<string, any>> {
   /**
    * Compute new fields from existing ones
    */
-  compute(computations: Record<string, (row: any) => any>): this {
+  compute(computations: Record<string, (row: T) => any>): this {
     return this.transform({
       compute: computations,
     });
@@ -548,22 +559,25 @@ class QueryBuilder<T extends Record<string, any>> {
    *  query.where("role", "manager").where("department", "IT");
    * }).execute();
    */
-  where(field: string, operator: WhereOperator, value: any): this;
-  where(field: string, value: any): this;
-  where(conditions: Record<string, any>): this;
+  where(field: FieldKeys<T>, operator: WhereOperator, value: any): this;
+  where(field: FieldKeys<T>, value: any): this;
+  where(conditions: Record<FieldKeys<T>, any>): this;
   where(
-    fieldOrConditions: string | Record<string, any>,
+    fieldOrConditions: FieldKeys<T> | Record<FieldKeys<T>, any>,
     operatorOrValue?: WhereOperator | any,
     value?: any
   ): this {
     if (typeof fieldOrConditions === "object") {
-      this.params.filter = { ...this.params.filter, ...fieldOrConditions };
+      this.params.filter = {
+        ...this.params.filter,
+        ...fieldOrConditions,
+      } as Partial<T>;
     } else {
       if (arguments.length === 2) {
         this.params.filter = {
           ...this.params.filter,
           [fieldOrConditions]: operatorOrValue,
-        };
+        } as Partial<T>;
       } else {
         if (!this.params.whereRaw) {
           this.params.whereRaw = [];
@@ -579,7 +593,7 @@ class QueryBuilder<T extends Record<string, any>> {
   }
 
   // Where between
-  whereBetween(field: string, range: [any, any]): this {
+  whereBetween(field: FieldKeys<T>, range: [any, any]): this {
     if (!this.params.whereBetween) {
       this.params.whereBetween = [];
     }
@@ -592,7 +606,7 @@ class QueryBuilder<T extends Record<string, any>> {
   }
 
   // Where in
-  whereIn(field: string, values: any[]): this {
+  whereIn(field: FieldKeys<T>, values: any[]): this {
     if (!this.params.whereIn) {
       this.params.whereIn = {};
     }
@@ -601,7 +615,7 @@ class QueryBuilder<T extends Record<string, any>> {
   }
 
   // Where not in
-  whereNotIn(field: string, values: any[]): this {
+  whereNotIn(field: FieldKeys<T>, values: any[]): this {
     if (!this.params.whereNotIn) {
       this.params.whereNotIn = {};
     }
@@ -610,7 +624,7 @@ class QueryBuilder<T extends Record<string, any>> {
   }
 
   // Where null
-  whereNull(field: string): this {
+  whereNull(field: FieldKeys<T>): this {
     if (!this.params.whereNull) {
       this.params.whereNull = [];
     }
@@ -619,7 +633,7 @@ class QueryBuilder<T extends Record<string, any>> {
   }
 
   // Where not null
-  whereNotNull(field: string): this {
+  whereNotNull(field: FieldKeys<T>): this {
     if (!this.params.whereNotNull) {
       this.params.whereNotNull = [];
     }
@@ -629,13 +643,13 @@ class QueryBuilder<T extends Record<string, any>> {
 
   // Order by
   orderBy(
-    field: string,
+    field: FieldKeys<T>,
     direction?: "asc" | "desc",
     nulls?: "first" | "last"
   ): this;
-  orderBy(options: OrderByClause): this;
+  orderBy(options: OrderByClause<T>): this;
   orderBy(
-    fieldOrOptions: string | OrderByClause,
+    fieldOrOptions: FieldKeys<T> | OrderByClause<T>,
     direction?: "asc" | "desc",
     nulls?: "first" | "last"
   ): this {
@@ -645,9 +659,13 @@ class QueryBuilder<T extends Record<string, any>> {
 
     if (typeof fieldOrOptions === "string") {
       direction = direction || "asc";
-      this.params.orderBy.push({ field: fieldOrOptions, direction, nulls });
+      this.params.orderBy.push({
+        field: fieldOrOptions as FieldKeys<T>,
+        direction,
+        nulls,
+      });
     } else {
-      this.params.orderBy.push(fieldOrOptions);
+      this.params.orderBy.push(fieldOrOptions as OrderByClause<T>);
     }
 
     return this;
@@ -684,7 +702,7 @@ class QueryBuilder<T extends Record<string, any>> {
     operator: GroupOperator,
     callback: (query: QueryBuilder<T>) => void
   ): this {
-    const group: WhereGroup = {
+    const group: WhereGroup<T> = {
       type: operator,
       clauses: [],
     };
@@ -760,8 +778,8 @@ class QueryBuilder<T extends Record<string, any>> {
    * Add an aggregate function
    */
   aggregate(
-    type: AggregateOptions["type"],
-    field: string,
+    type: AggregateOptions<T>["type"],
+    field: FieldKeys<T>,
     alias?: string
   ): this {
     if (!this.params.aggregates) {
@@ -774,40 +792,40 @@ class QueryBuilder<T extends Record<string, any>> {
   /**
    * Shorthand for count aggregate
    */
-  count(field: string = "*", alias?: string): this {
+  count(field: FieldKeys<T> = "*", alias?: string): this {
     return this.aggregate("count", field, alias);
   }
 
   /**
    * Shorthand for sum aggregate
    */
-  sum(field: string, alias?: string): this {
+  sum(field: FieldKeys<T>, alias?: string): this {
     return this.aggregate("sum", field, alias);
   }
 
   /**
    * Shorthand for average aggregate
    */
-  avg(field: string, alias?: string): this {
+  avg(field: FieldKeys<T>, alias?: string): this {
     return this.aggregate("avg", field, alias);
   }
 
   /**
    * Shorthand for minimum aggregate
    */
-  min(field: string, alias?: string): this {
+  min(field: FieldKeys<T>, alias?: string): this {
     return this.aggregate("min", field, alias);
   }
 
   /**
    * Shorthand for maximum aggregate
    */
-  max(field: string, alias?: string): this {
+  max(field: FieldKeys<T>, alias?: string): this {
     return this.aggregate("max", field, alias);
   }
 
   // Get query parameters without executing
-  async toParams(): Promise<QueryParams> {
+  async toParams(): Promise<QueryParams<T>> {
     const response = await this.sdk.getRecords<T>(this.tableName, this.params, {
       execute: false,
     });
@@ -878,7 +896,10 @@ class QueryBuilder<T extends Record<string, any>> {
     return records;
   }
 
-  private pivotResults(records: T[], pivot: TransformConfig["pivot"]): any[] {
+  private pivotResults(
+    records: T[],
+    pivot: TransformConfig<T>["pivot"]
+  ): any[] {
     // Implementation of pivot logic
     return records;
   }
